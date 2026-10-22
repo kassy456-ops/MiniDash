@@ -39,6 +39,7 @@ def initialize_database():
                 total_cents INTEGER NOT NULL,
                 address TEXT NOT NULL,
                 created_at TEXT NOT NULL,
+                scheduled_for TEXT,
                 FOREIGN KEY (restaurant_id)
                     REFERENCES restaurants(id)
             );
@@ -54,6 +55,14 @@ def initialize_database():
                     REFERENCES menu_items(id)
             );
         """)
+
+        columns = connection.execute("PRAGMA table_info(orders)").fetchall()
+        column_names = [column["name"] for column in columns]
+
+        if "scheduled_for" not in column_names:
+            connection.execute(
+                "ALTER TABLE orders ADD COLUMN scheduled_for TEXT"
+            )
 
         restaurants = [
             (1, "Pizza Palace", "Italian", "10:00", "22:00", 25),

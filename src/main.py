@@ -58,6 +58,7 @@ def get_restaurant_menu(restaurant_id: int):
         return [dict(item) for item in menu_items]
     
 from pydantic import BaseModel, Field
+from datetime import datetime, timezone, timedelta
 
 
 class OrderItemRequest(BaseModel):
@@ -69,12 +70,34 @@ class CreateOrderRequest(BaseModel):
     restaurant_id: int
     address: str = Field(min_length=1)
     items: list[OrderItemRequest] = Field(min_length=1)
+    scheduled_for: datetime | None = None
 
-from datetime import datetime, timezone
+
 
 
 @app.post("/orders", status_code=201)
 def create_order(order: CreateOrderRequest):
+    if order.scheduled_for is not None:
+        if order.scheduled_for.tzinfo is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Scheduled time must include a timezone"
+            )
+
+        now = datetime.now(timezone.utc)
+        scheduled_time = order.scheduled_for.astimezone(timezone.utc)
+
+        if scheduled_time < now + timedelta(minutes=45):
+            raise HTTPException(
+                status_code=400,
+                detail="Scheduled delivery must be at least 45 minutes from now"
+            )
+
+        if scheduled_time > now + timedelta(days=7):
+            raise HTTPException(
+                status_code=400,
+                detail="Scheduled delivery cannot be more than 7 days away"
+            )
     with get_connection() as connection:
         restaurant = connection.execute(
             "SELECT id FROM restaurants WHERE id = ?",
@@ -109,18 +132,25 @@ def create_order(order: CreateOrderRequest):
             total_cents += menu_item["price_cents"] * item.quantity
             order_items.append((item.menu_item_id, item.quantity))
 
+        order_status = "SCHEDULED" if order.scheduled_for is not None else "PLACED"
+
         cursor = connection.execute(
             """
             INSERT INTO orders
-            (restaurant_id, status, total_cents, address, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            (restaurant_id, status, total_cents, address, created_at, scheduled_for)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 order.restaurant_id,
-                "PLACED",
+                order_status,
                 total_cents,
                 order.address,
                 datetime.now(timezone.utc).isoformat(),
+                (
+                    order.scheduled_for.astimezone(timezone.utc).isoformat()
+                    if order.scheduled_for is not None
+                    else None
+                ),
             ),
         )
 
@@ -138,13 +168,18 @@ def create_order(order: CreateOrderRequest):
 
         connection.commit()
 
-        return {
-            "id": order_id,
-            "restaurant_id": order.restaurant_id,
-            "status": "PLACED",
-            "total_cents": total_cents,
-            "address": order.address,
-        }
+    return {
+        "id": order_id,
+        "restaurant_id": order.restaurant_id,
+        "status": order_status,
+        "total_cents": total_cents,
+        "address": order.address,
+        "scheduled_for": (
+            order.scheduled_for.astimezone(timezone.utc).isoformat()
+            if order.scheduled_for is not None
+            else None
+        ),
+    }
 
 @app.get("/orders/{order_id}")
 def get_order(order_id: int):
@@ -152,7 +187,7 @@ def get_order(order_id: int):
         order = connection.execute(
             """
             SELECT id, restaurant_id, status, total_cents,
-                   address, created_at
+                   address, created_at, scheduled_for
             FROM orders
             WHERE id = ?
             """,
