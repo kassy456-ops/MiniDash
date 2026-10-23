@@ -1,13 +1,28 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from .database import initialize_database
 
+async def scheduler_loop():
+    while True:
+        await asyncio.to_thread(release_due_orders, clock)
+        await asyncio.sleep(10)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     initialize_database()
-    yield
+    scheduler_task = asyncio.create_task(scheduler_loop())
+
+    try:
+        yield
+    finally:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="MiniDash", lifespan=lifespan)
@@ -60,6 +75,10 @@ def get_restaurant_menu(restaurant_id: int):
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
+from src.clock import Clock
+from src.scheduler import release_due_orders
+
+clock = Clock()
 
 
 class OrderItemRequest(BaseModel):
@@ -85,7 +104,7 @@ def create_order(order: CreateOrderRequest):
                 detail="Scheduled time must include a timezone"
             )
 
-        now = datetime.now(timezone.utc)
+        now = clock.now()
         scheduled_time = order.scheduled_for.astimezone(timezone.utc)
 
         if scheduled_time < now + timedelta(minutes=45):
@@ -173,7 +192,7 @@ def create_order(order: CreateOrderRequest):
                 order_status,
                 total_cents,
                 order.address,
-                datetime.now(timezone.utc).isoformat(),
+                clock.now().isoformat(),
                 (
                     order.scheduled_for.astimezone(timezone.utc).isoformat()
                     if order.scheduled_for is not None
@@ -266,7 +285,7 @@ def update_order_status(order_id: int, request: UpdateOrderStatusRequest):
 
     with get_connection() as connection:
         order = connection.execute(
-            "SELECT id FROM orders WHERE id = ?",
+            "SELECT id, status, scheduled_for FROM orders WHERE id = ?",
             (order_id,)
         ).fetchone()
 
@@ -275,6 +294,24 @@ def update_order_status(order_id: int, request: UpdateOrderStatusRequest):
                 status_code=404,
                 detail="Order not found"
             )
+        
+        if order["status"] == "SCHEDULED":
+            if request.status != "CANCELLED":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Scheduled orders cannot be manually updated before release"
+                )
+            scheduled_time = datetime.fromisoformat(
+                order["scheduled_for"]
+            )
+
+            release_time = scheduled_time - timedelta(minutes=30)
+
+            if clock.now() >= release_time:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Scheduled order can no longer be cancelled"
+                )
 
         connection.execute(
             "UPDATE orders SET status = ? WHERE id = ?",
