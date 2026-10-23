@@ -59,6 +59,7 @@ def get_restaurant_menu(restaurant_id: int):
     
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 
 class OrderItemRequest(BaseModel):
@@ -100,7 +101,7 @@ def create_order(order: CreateOrderRequest):
             )
     with get_connection() as connection:
         restaurant = connection.execute(
-            "SELECT id FROM restaurants WHERE id = ?",
+            "SELECT id, opens_at, closes_at FROM restaurants WHERE id = ?",
             (order.restaurant_id,),
         ).fetchone()
 
@@ -109,6 +110,33 @@ def create_order(order: CreateOrderRequest):
                 status_code=404,
                 detail="Restaurant not found"
             )
+        
+        if order.scheduled_for is not None:
+            local_time = scheduled_time.astimezone(
+                ZoneInfo("America/New_York")
+            ).time()
+
+            opening_time = datetime.strptime(
+                restaurant["opens_at"], "%H:%M"
+            ).time()
+
+            closing_time = datetime.strptime(
+                restaurant["closes_at"], "%H:%M"
+            ).time()
+
+            if opening_time <= closing_time:
+                is_open = opening_time <= local_time < closing_time
+            else:
+                is_open = (
+                    local_time >= opening_time
+                    or local_time < closing_time
+                )
+
+            if not is_open:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Restaurant is closed at the scheduled delivery time"
+                )
 
         total_cents = 0
         order_items = []
