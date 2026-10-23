@@ -295,6 +295,12 @@ def update_order_status(order_id: int, request: UpdateOrderStatusRequest):
                 detail="Order not found"
             )
         
+        if order["status"] == "CANCELLED":
+            raise HTTPException(
+                status_code=400,
+                detail="Cancelled orders cannot be updated"
+            )
+        
         if order["status"] == "SCHEDULED":
             if request.status != "CANCELLED":
                 raise HTTPException(
@@ -313,10 +319,29 @@ def update_order_status(order_id: int, request: UpdateOrderStatusRequest):
                     detail="Scheduled order can no longer be cancelled"
                 )
 
-        connection.execute(
-            "UPDATE orders SET status = ? WHERE id = ?",
-            (request.status, order_id)
-        )
+        if order["status"] == "SCHEDULED":
+            cursor = connection.execute(
+                """
+                UPDATE orders
+                SET status = 'CANCELLED'
+                WHERE id = ?
+                  AND status = 'SCHEDULED'
+                  AND scheduled_for > ?
+                """,
+                (order_id, (clock.now() + timedelta(minutes=30)).isoformat())
+            )
+
+            if cursor.rowcount == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Scheduled order can no longer be cancelled"
+                )
+        else:
+            connection.execute(
+                "UPDATE orders SET status = ? WHERE id = ?",
+                (request.status, order_id)
+            )
+
         connection.commit()
 
     return {
