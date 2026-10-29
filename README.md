@@ -35,16 +35,22 @@ AI_LOG.md	              AI usage documentation
 
 How to Run MiniDash
 1. Open the MiniDash project folder in VS Code.
-2. Install the required Python libraries:
+
+2. Create a virtual environment if one does not already exist:  python3 -m venv .venv
+
+3. Activate the virtual environment: source .venv/bin/activate
+
+4. Install the required Python libraries:
 pip install fastapi uvicorn pytest httpx
 
-3. Start the FastAPI server from the project folder:
-
+5. Start the FastAPI server from the project folder:
 uvicorn src.main:app --reload
 
-4. Open http://127.0.0.1:8000/app/ in your browser to use MiniDash.
+6. Open http://127.0.0.1:8000/app/ in your browser to use MiniDash.
 
 The API documentation is available at http://127.0.0.1:8000/docs.
+
+
 Testing
 MiniDash uses pytest to test its API endpoints and scheduled delivery functionality.
 
