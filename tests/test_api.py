@@ -1,3 +1,6 @@
+
+# TEST SETUP
+# Imports pytest, FastAPI's TestClient, and the MiniDash backend.
 import pytest
 from fastapi.testclient import TestClient
 from src.main import app
@@ -5,6 +8,9 @@ from src.main import app
 import src.database as database
 import src.main as main
 
+
+# Creates a temporary SQLite database for each test.
+# This keeps test orders separate from real MiniDash orders.
 @pytest.fixture(autouse=True)
 def use_test_database(tmp_path, monkeypatch):
     test_db_path = tmp_path / "test_minidash.db"
@@ -14,9 +20,14 @@ def use_test_database(tmp_path, monkeypatch):
 
     database.initialize_database()
 
+
+# Creates a client that can send simulated requests to FastAPI.
 client = TestClient(app)
 
 
+# TEST 1: RESTAURANT LIST
+# Checks that the API returns all five restaurants
+# and that the first two restaurant names are correct.
 def test_get_restaurants():
     response = client.get("/restaurants")
 
@@ -28,6 +39,10 @@ def test_get_restaurants():
     assert restaurants[0]["name"] == "Pizza Palace"
     assert restaurants[1]["name"] == "Sushi House"
 
+
+# TEST 2: RESTAURANT MENU
+# Checks that a restaurant's menu can be retrieved
+# and that menu items include names and prices.
 def test_get_restaurant_menu():
     response = client.get("/restaurants/1/menu")
 
@@ -39,6 +54,10 @@ def test_get_restaurant_menu():
     assert "name" in menu[0]
     assert "price_cents" in menu[0]
 
+
+# TEST 3: CREATE ORDER
+# Places an order for two items and verifies that
+# the order is saved with the correct total and status.
 def test_create_order():
     menu_response = client.get("/restaurants/1/menu")
     assert menu_response.status_code == 200
@@ -68,6 +87,10 @@ def test_create_order():
     assert order["total_cents"] == menu_item["price_cents"] * 2
     assert order["address"] == "123 Test Street, New York, NY"
 
+
+# TEST 4: RETRIEVE ORDER
+# Creates an order and then retrieves it by its ID.
+# Confirms that the returned order has the correct information.
 def test_get_order():
     menu_response = client.get("/restaurants/1/menu")
     menu_item = menu_response.json()[0]
@@ -98,6 +121,10 @@ def test_get_order():
     assert order["restaurant_id"] == 1
     assert order["total_cents"] == menu_item["price_cents"] * 2
 
+
+# TEST 5: UPDATE ORDER STATUS
+# Creates an order, changes its status to PREPARING,
+# and verifies that the API accepts the update.
 def test_update_order_status():
     menu_response = client.get("/restaurants/1/menu")
     menu_item = menu_response.json()[0]
@@ -126,18 +153,29 @@ def test_update_order_status():
     assert response.status_code == 200
     assert response.json()["status"] == "PREPARING"
 
+
+# TEST 6: INVALID RESTAURANT
+# Checks that a nonexistent restaurant returns HTTP 404
+# instead of displaying an incorrect menu.
 def test_invalid_restaurant_id():
     response = client.get("/restaurants/99999/menu")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Restaurant not found"
 
+
+# TEST 7: INVALID ORDER
+# Checks that looking up a nonexistent order returns HTTP 404.
 def test_invalid_order_id():
     response = client.get("/orders/999999")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Order not found"
 
+
+# TEST 8: INVALID MENU ITEM
+# Checks that customers cannot order a food item
+# that does not exist in the selected restaurant.
 def test_invalid_menu_item():
     order_data = {
         "restaurant_id": 1,
@@ -154,4 +192,3 @@ def test_invalid_menu_item():
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid menu item for this restaurant"
-

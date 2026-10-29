@@ -1,15 +1,25 @@
+
+# Imports FastAPI, database, scheduling, and application lifecycle tools.
 import asyncio
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from .database import initialize_database
 
+
+# Runs the scheduler every 10 seconds in the background.
+# It checks whether any scheduled orders should become PLACED.
 async def scheduler_loop():
     while True:
         await asyncio.to_thread(release_due_orders, clock)
         await asyncio.sleep(10)
 
 
+# Initializes the database and starts the scheduler when
+# FastAPI starts. Stops the scheduler when FastAPI shuts down.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     initialize_database()
@@ -25,11 +35,14 @@ async def lifespan(app: FastAPI):
             pass
 
 
+# Creates the MiniDash FastAPI application.
 app = FastAPI(title="MiniDash", lifespan=lifespan)
 
 from .database import get_connection
 
 
+# GET /restaurants
+# Retrieves all five restaurants from SQLite and returns them as JSON.
 @app.get("/restaurants")
 def list_restaurants():
     with get_connection() as connection:
@@ -44,8 +57,13 @@ def list_restaurants():
 
     return [dict(restaurant) for restaurant in restaurants]
 
+
 from fastapi import HTTPException
 
+
+# GET /restaurants/{restaurant_id}/menu
+# Checks that the restaurant exists, then returns its menu.
+# Returns HTTP 404 for an invalid restaurant ID.
 @app.get("/restaurants/{restaurant_id}/menu")
 def get_restaurant_menu(restaurant_id: int):
     with get_connection() as connection:
@@ -71,21 +89,27 @@ def get_restaurant_menu(restaurant_id: int):
         ).fetchall()
 
         return [dict(item) for item in menu_items]
-    
+
+
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from src.clock import Clock
 from src.scheduler import release_due_orders
 
+# Creates the clock used for real-time scheduling.
 clock = Clock()
 
 
+# Defines the required information for each food item.
+# Quantities must be greater than zero.
 class OrderItemRequest(BaseModel):
     menu_item_id: int
     quantity: int = Field(gt=0)
 
 
+# Defines the data required to place an order.
+# scheduled_for is optional because regular orders do not need it.
 class CreateOrderRequest(BaseModel):
     restaurant_id: int
     address: str = Field(min_length=1)
@@ -93,10 +117,14 @@ class CreateOrderRequest(BaseModel):
     scheduled_for: datetime | None = None
 
 
-
-
+# POST /orders
+# Validates an order, checks scheduling rules, calculates
+# the total using database prices, and saves the order.
 @app.post("/orders", status_code=201)
 def create_order(order: CreateOrderRequest):
+
+    # For scheduled orders, require a timezone and enforce
+    # the 45-minute minimum and seven-day maximum.
     if order.scheduled_for is not None:
         if order.scheduled_for.tzinfo is None:
             raise HTTPException(
@@ -118,7 +146,10 @@ def create_order(order: CreateOrderRequest):
                 status_code=400,
                 detail="Scheduled delivery cannot be more than 7 days away"
             )
+
     with get_connection() as connection:
+
+        # Confirm that the restaurant exists.
         restaurant = connection.execute(
             "SELECT id, opens_at, closes_at FROM restaurants WHERE id = ?",
             (order.restaurant_id,),
@@ -129,7 +160,10 @@ def create_order(order: CreateOrderRequest):
                 status_code=404,
                 detail="Restaurant not found"
             )
-        
+
+        # Scheduled deliveries must be within restaurant hours.
+        # Times are converted to New York time before comparison.
+        # The second condition handles restaurants open past midnight.
         if order.scheduled_for is not None:
             local_time = scheduled_time.astimezone(
                 ZoneInfo("America/New_York")
@@ -157,6 +191,9 @@ def create_order(order: CreateOrderRequest):
                     detail="Restaurant is closed at the scheduled delivery time"
                 )
 
+        # Validate every menu item and calculate the total.
+        # Prices come from SQLite rather than the frontend,
+        # preventing customers from submitting their own prices.
         total_cents = 0
         order_items = []
 
@@ -179,8 +216,12 @@ def create_order(order: CreateOrderRequest):
             total_cents += menu_item["price_cents"] * item.quantity
             order_items.append((item.menu_item_id, item.quantity))
 
+        # Regular orders start as PLACED.
+        # Future deliveries start as SCHEDULED.
         order_status = "SCHEDULED" if order.scheduled_for is not None else "PLACED"
 
+        # Save the main order record, including its status,
+        # total, address, creation time, and scheduled time.
         cursor = connection.execute(
             """
             INSERT INTO orders
@@ -201,8 +242,10 @@ def create_order(order: CreateOrderRequest):
             ),
         )
 
+        # Retrieve the automatically generated order ID.
         order_id = cursor.lastrowid
 
+        # Save each ordered food item and its quantity.
         for menu_item_id, quantity in order_items:
             connection.execute(
                 """
@@ -213,8 +256,10 @@ def create_order(order: CreateOrderRequest):
                 (order_id, menu_item_id, quantity),
             )
 
+        # Permanently save the database changes.
         connection.commit()
 
+    # Return the new order's details to the frontend.
     return {
         "id": order_id,
         "restaurant_id": order.restaurant_id,
@@ -228,6 +273,10 @@ def create_order(order: CreateOrderRequest):
         ),
     }
 
+
+# GET /orders/{order_id}
+# Retrieves an order and its food items using the order number.
+# Returns HTTP 404 if the order does not exist.
 @app.get("/orders/{order_id}")
 def get_order(order_id: int):
     with get_connection() as connection:
@@ -261,14 +310,19 @@ def get_order(order_id: int):
         result["items"] = [dict(item) for item in items]
 
         return result
-    
 
+
+# Defines the information required to update an order's status.
 class UpdateOrderStatusRequest(BaseModel):
     status: str
 
 
+# PATCH /orders/{order_id}/status
+# Validates status changes and handles scheduled-order cancellation.
 @app.patch("/orders/{order_id}/status")
 def update_order_status(order_id: int, request: UpdateOrderStatusRequest):
+
+    # Only these status values are accepted for manual updates.
     allowed_statuses = [
         "PLACED",
         "PREPARING",
@@ -284,6 +338,8 @@ def update_order_status(order_id: int, request: UpdateOrderStatusRequest):
         )
 
     with get_connection() as connection:
+
+        # Retrieve the order and reject invalid order IDs.
         order = connection.execute(
             "SELECT id, status, scheduled_for FROM orders WHERE id = ?",
             (order_id,)
@@ -294,19 +350,23 @@ def update_order_status(order_id: int, request: UpdateOrderStatusRequest):
                 status_code=404,
                 detail="Order not found"
             )
-        
+
+        # Cancelled orders cannot be updated again.
         if order["status"] == "CANCELLED":
             raise HTTPException(
                 status_code=400,
                 detail="Cancelled orders cannot be updated"
             )
-        
+
+        # Scheduled orders can only be cancelled manually.
+        # Cancellation must happen before the 30-minute cutoff.
         if order["status"] == "SCHEDULED":
             if request.status != "CANCELLED":
                 raise HTTPException(
                     status_code=400,
                     detail="Scheduled orders cannot be manually updated before release"
                 )
+
             scheduled_time = datetime.fromisoformat(
                 order["scheduled_for"]
             )
@@ -319,6 +379,8 @@ def update_order_status(order_id: int, request: UpdateOrderStatusRequest):
                     detail="Scheduled order can no longer be cancelled"
                 )
 
+        # Uses an additional SQL condition to make sure
+        # the order is still scheduled and outside the cutoff.
         if order["status"] == "SCHEDULED":
             cursor = connection.execute(
                 """
@@ -336,7 +398,10 @@ def update_order_status(order_id: int, request: UpdateOrderStatusRequest):
                     status_code=400,
                     detail="Scheduled order can no longer be cancelled"
                 )
+
         else:
+            # Regular and already released orders use
+            # the normal status update operation.
             connection.execute(
                 "UPDATE orders SET status = ? WHERE id = ?",
                 (request.status, order_id)
@@ -344,7 +409,26 @@ def update_order_status(order_id: int, request: UpdateOrderStatusRequest):
 
         connection.commit()
 
+    # Return the updated status to the frontend.
     return {
         "id": order_id,
         "status": request.status
     }
+
+
+# Locates the frontend folder containing HTML, CSS, and JavaScript.
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+
+
+# Redirects the homepage to the MiniDash frontend.
+@app.get("/", include_in_schema=False)
+def frontend_home():
+    return RedirectResponse(url="/app/")
+
+
+# Serves the frontend files at the /app URL.
+app.mount(
+    "/app",
+    StaticFiles(directory=str(FRONTEND_DIR), html=True),
+    name="frontend"
+)

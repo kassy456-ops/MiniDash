@@ -1,123 +1,133 @@
+MiniDash — Design
 
-# MiniDash — Track A: Scheduled Orders
+1. System Architecture
 
-## 1. System Overview
+I used an Architecture that has a Modular Monolith. The application is still running in one system, however the code for each file was written with a specific responsibility. This makes building and testing much easier than microservices.
 
-MiniDash is a food delivery REST API built using Python, FastAPI, and SQLite.
+2. Architecture Diagram
 
-The Scheduled Orders feature allows customers to choose a future delivery time. The system validates the requested time, checks restaurant operating hours, and stores the order with a SCHEDULED status.
+                 Customer
+                    |
+                    v
+       Frontend (HTML, CSS, JS)
+                    |
+                    v
+          FastAPI (src/main.py)
+                    |
+          +---------+---------+
+          |         |         |
+          v         v         v
+       Database  Scheduler   Clock
+      database.py scheduler.py clock.py
+          |         |
+          v         |
+        SQLite <----+
+        Database
 
-Thirty minutes before the requested delivery time, the system releases the order by changing its status to PLACED.
+     Tests (pytest + FakeClock)
+          |
+          v
+     API and Scheduler
 
-## 2. System Components
 
-### API Routes
-The API receives customer requests to create, view, update, and cancel orders.
+The customer interacts directly with the Frontend of the application via using HTML/CSS/JavaScript. Frontend sends requests to Fast API in order to obtain restaurant data, create orders, track delivery status.
 
-### Order Service
-The service handles business rules, including scheduling limits, restaurant availability, order cancellation, and automatic release.
+Fast API utilizes a Database to both Store and Retrieve Data. Scheduler periodically checks for any Scheduled Orders and Updates Statuses of these orders when they become ready for release. Clock is used as a means to provide Time to Scheduling Operations.
 
-### Database Repository
-The repository reads and writes restaurant and order information in SQLite.
+3. Main Components
 
-### Release Processor
-A release processor checks scheduled orders and changes eligible orders from SCHEDULED to PLACED.
+| File                      | Responsibility                                                     |
+| ------------------------- | ------------------------------------------------------------------ |
+| `src/main.py`             | Handles API requests, order creation, tracking, and status updates |
+| `src/database.py`         | Creates and manages the SQLite database                            |
+| `src/scheduler.py`        | Automatically releases scheduled orders                            |
+| `src/clock.py`            | Provides Clock and FakeClock for time-based operations             |
+| `frontend/index.html`     | Contains the website structure                                     |
+| `frontend/style.css`      | Controls the website's appearance                                  |
+| `frontend/app.js`         | Connects the frontend to the FastAPI endpoints                     |
+| `tests/test_api.py`       | Tests the API functionality                                        |
+| `tests/test_scheduler.py` | Tests scheduling and cancellation behavior                         |
 
-### Clock
-An injectable clock provides the current time. This allows automated tests to simulate different times without waiting.
+4. Database Design
 
-## 3. Database Changes
+MiniDash uses four database tables.
 
-The existing orders table will gain one optional column:
+| Table         | Purpose                                                                         |
+| ------------- | ------------------------------------------------------------------------------- |
+| `restaurants` | Stores restaurant names, cuisines, opening hours, and preparation times         |
+| `menu_items`  | Stores menu items, prices, and their associated restaurants                     |
+| `orders`      | Stores order details, delivery addresses, statuses, totals, and scheduled times |
+| `order_items` | Stores the menu items and quantities included in each order                     |
 
-- scheduled_for: The requested delivery date and time, stored in UTC.
+The `orders` table includes a `scheduled_for` field for future deliveries.
 
-Existing orders without a scheduled delivery time will continue to work normally.
+Prices are stored in cents to avoid rounding errors.
 
-Scheduled orders will use the SCHEDULED status until they are released.
+5. API Endpoints
 
-## 4. API Changes
+| Method | Endpoint                            | Purpose                                              |
+| ------ | ----------------------------------- | ---------------------------------------------------- |
+| GET    | `/restaurants`                      | Retrieve all five restaurants                        |
+| GET    | `/restaurants/{restaurant_id}/menu` | Retrieve a restaurant's menu                         |
+| POST   | `/orders`                           | Place regular or scheduled orders                    |
+| GET    | `/orders/{order_id}`                | Retrieve order details and status                    |
+| PATCH  | `/orders/{order_id}/status`         | Update an order's status or cancel a scheduled order |
 
-### POST /orders
+The frontend uses these five endpoints to communicate with the backend.
 
-The request body will support an optional scheduled_for field.
+For scheduled orders, the `POST /orders` request includes an optional `scheduled_for` field.
 
-If scheduled_for is missing, the order will be placed immediately.
+The system uses the following order statuses: PLACED, SCHEDULED, PREPARING, OUT_FOR_DELIVERY, DELIVERED, and CANCELLED.
 
-If scheduled_for is provided, the system will:
+6. Scheduled Delivery Process
 
-1. Verify that the delivery time is between 45 minutes and 7 days from now, inclusive.
-2. Verify that the restaurant is open at the requested delivery time.
-3. Create the order with status SCHEDULED.
+When a customer places a scheduled order:
 
-Invalid requests will return an appropriate HTTP error.
+    1. The customer selects a restaurant, food items, delivery address, and scheduled delivery time.
+    2. FastAPI checks that the delivery time is at least 45 minutes and no more than seven days in advance.
+    3. The system checks that the selected delivery time falls within the restaurant's opening hours.
+    4. If the request is valid, the order is saved in SQLite with the status SCHEDULED.
+    5. The scheduler checks for scheduled orders that are ready to be released.
+    6. Once an order reaches the 30-minute release window, its status changes from SCHEDULED to PLACED.
 
-### GET /orders/{order_id}
+The scheduler runs approximately every 10 seconds while the FastAPI application is running.
 
-The response will include scheduled_for when the order has a scheduled delivery time.
+7. Scheduled Order Cancellation
 
-### PATCH /orders/{order_id}/status
+Customers have the ability to cancel their pre-scheduled orders up until the 30 minutes prior to when they are set to "release." Once a customer has reached the time frame of releasing (the cutoff), if he/she tries to cancel an order the system will reject that cancellation. Orders canceled in this manner, will now have a status of CANCELLED; however, due to how the scheduling process is designed, these orders will not be able to be released through the scheduler as the scheduling tool only updates orders that have a SCHEDULED status. Scheduled orders will continue to operate independently of regular orders.
 
-The existing endpoint will continue to support normal order status updates. Cancellation of scheduled orders will be allowed only before release.
 
-## 5. Automatic Release Logic
+8. Clock and FakeClock
 
-The release processor will find orders where:
+The use of Clock and FakeClock by MiniDash facilitates the testing of time-related features within the application (i.e., the 45 minute minimum wait period, the 7 day maximum wait period and the 30 minute wait period before being able to "release") through simulating various times without having to wait in actual real-time. FakeClock is used to allow the simulation of specified times when running tests, whereas Clock allows you to obtain the current time for your application. FastAPI applications utilize a shared Clock instance, which can be passed into the Scheduler as one of its parameters.
 
-- status is SCHEDULED
-- scheduled_for is at or before 30 minutes from the current time
+9. Architecture Decision Record (ADR)
 
-Each eligible order will be updated from SCHEDULED to PLACED.
+ADR 1 — Modular Monolith vs. Microservices
+Problem: I needed to decide which architecture would be better for MiniDash.
 
-The database update will check that the status is still SCHEDULED, preventing repeated releases if the processor runs more than once.
+Option 1 — Microservices
+   With microservices, different features would run as separate services.
+Advantages:
+- Services can be deployed independently.
+- Individual services can scale separately.
+Disadvantages:
+- Requires more setup.
+- More difficult to test and maintain.
+- Adds unnecessary complexity for a small project.
 
-For this project, the processor will run periodically while the application is running. It will also check overdue scheduled orders when the application starts.
+Option 2 — Modular Monolith
+With a modular monolith, the backend runs as one application, but the code is divided into separate files.
+Advantages:
+- Easier to develop and maintain.
+- Simpler testing and deployment.
+- Suitable for a single developer.
+Disadvantages:
+- Components cannot be deployed separately.
+- The application scales as one system.
 
-## 6. Architecture Diagram
+Decision: I chose the modular monolith because it is easier to manage and provides enough separation for MiniDash without the complexity of microservices.
 
-```mermaid
-flowchart TD
-    A[Customer API Request] --> B[FastAPI Routes]
-    B --> C[Order Service]
-    C --> D[Clock]
-    C --> E[SQLite Repository]
-    E --> F[(SQLite Database)]
-    G[Release Processor] --> C
-```
+10. Design Limitations
 
-## 7. Architecture Decision Record (ADR)
-
-### Decision: Use a Database-Backed Release Processor
-
-**Context:**
-Scheduled orders must be released 30 minutes before delivery. The system must avoid releasing the same order more than once.
-
-**Options Considered:**
-
-1. In-memory timers: Simple, but scheduled timers can be lost when the server restarts.
-2. External task queue: More scalable, but adds unnecessary infrastructure for a small project.
-3. Database-backed periodic processor: Stores orders persistently and can find pending releases after a restart.
-
-**Decision:**
-Use a database-backed periodic release processor with conditional SQLite updates.
-
-**Reasoning:**
-This approach fits the existing FastAPI and SQLite application, avoids additional dependencies, and supports safe retries.
-
-**Trade-off:**
-Release processing may occur slightly after the exact release time, depending on the polling interval. The processor must also be running for orders to be released.
-
-## 8. Testing Strategy
-
-Automated tests will verify:
-
-- Immediate orders still work.
-- Scheduling is accepted at exactly 45 minutes and 7 days.
-- Scheduling outside those limits is rejected.
-- Scheduling outside restaurant operating hours is rejected.
-- Valid scheduled orders begin with SCHEDULED status.
-- Orders release when they reach 30 minutes before delivery.
-- Running the release processor repeatedly does not release an order twice.
-- Cancellation works before release but is rejected afterward.
-- A fake clock can control scheduling tests.
-```
+MiniDash does not have real payment, account management or gps tracking for drivers. The scheduler in this example is running inside of the FastAPI application as opposed to running as a separate background application. The restaurant hours check validates the scheduled delivery time versus when the order was released. The application has a shared Clock object for all of its api requests and will use this clock object instead of passing the clock into each function that relies on time.

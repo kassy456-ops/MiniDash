@@ -1,48 +1,115 @@
+MiniDash — Requirements
 
-# MiniDash — Track A: Scheduled Orders
+1. Project Description
 
-## Feature Overview
+MiniDash is a basic food ordering app, which will allow users to find restaurants; look at their menu options and pricing; place an order and include their delivery address. Users may also use this app to monitor their orders by entering their order number. For Track A, I added the ability to set up pre-scheduled delivery times for orders. When you select a date/time for your delivery, the system will automatically release the order thirty minutes prior to the selected delivery time.
 
-MiniDash will allow customers to schedule food orders for future delivery instead of placing only immediate orders.
+For this project, I used FastAPI as the back-end framework; SQLite as the database; and HTML/CSS/JavaScript for creating the user interface.
 
-## User Stories
+2. User Stories
 
-1. As a customer, I want to choose a future delivery time so that my food arrives when I need it.
+- As a customer, I want to see all of the restaurants available, so I can determine which one to order from.
+- As a customer, I want to see all of the menus offered by each restaurant and prices, so I can make my selection.
+- As a customer, I want to be able to submit an order and provide my delivery location.
+- As a customer, I want to be able to locate my order based on my order number.
+- As a customer, I want to be able to set up a delivery date/time for my order.
+- As a customer, I want to be able to cancel an upcoming scheduled delivery before it is released.
 
-2. As a customer, I want to know when a scheduled delivery time is invalid so that I can select an acceptable time.
+3. Acceptance Criteria (EARS)
 
-3. As a customer, I want to schedule an order only when the restaurant is open so that my order can be fulfilled.
+AC1 — Restaurants
 
-4. As a customer, I want to cancel a scheduled order before it is released so that I can change my plans.
+WHEN a customer accesses the restaurant list, THE SYSTEM SHALL display all five available restaurants.
 
-5. As the system, I want to release scheduled orders automatically so that restaurants have time to prepare them.
+AC2 — Menus
 
-## Acceptance Criteria (EARS Format)
+WHEN a customer selects a restaurant, THE SYSTEM SHALL return all of the menu items and prices for the selected restaurant.
 
-1. **Optional scheduling:** When a customer places an order without a scheduled delivery time, the system shall create an order with status `PLACED`.
+AC3 — Invalid Restaurants
 
-2. **Minimum scheduling time:** When a customer requests delivery less than 45 minutes from the current time, the system shall reject the request.
+IF a customer attempts to access a restaurant that is not found in the database, THEN THE SYSTEM SHALL return an HTTP 404 error.
 
-3. **Maximum scheduling time:** When a customer requests delivery more than 7 days from the current time, the system shall reject the request.
+AC4 — Regular Orders
 
-4. **Restaurant availability:** When a customer requests scheduled delivery outside the restaurant's operating hours, the system shall reject the request.
+WHEN a customer submits a valid regular order, THE SYSTEM SHALL store the submitted order with a status of "PLACED".
 
-5. **Scheduled status:** When a customer places a valid scheduled order, the system shall save it with status `SCHEDULED`.
+AC5 — Order Totals
 
-6. **Automatic release:** When a scheduled order reaches 30 minutes before its requested delivery time, the system shall change its status to `PLACED`.
+WHEN an order is processed, THE SYSTEM SHALL calculate the correct total for the order using prices stored in the database.
 
-7. **Exactly-once release:** While processing scheduled orders, the system shall prevent an order from being released more than once.
+AC6 — Order Tracking
 
-8. **Cancellation:** When a customer cancels a scheduled order before its release time, the system shall change its status to `CANCELLED`.
+WHEN a customer provides a valid order number, THE SYSTEM SHALL return the details for that order along with its current status.
 
-9. **Cancellation restriction:** When a customer attempts to cancel a scheduled order after it has been released, the system shall reject the cancellation through the scheduled-order cancellation operation.
+AC7 — Minimum Delivery Time Prior to Order Submission
 
-10. **Testable time:** The system shall use an injectable clock for scheduling calculations so tests can control the current time.
+IF a customer attempts to schedule a delivery less than forty-five minutes in advance, THEN THE SYSTEM SHALL reject the request.
 
-## Out of Scope
+AC8 — Maximum Delivery Time in Advance
 
-- Group ordering
-- Live driver tracking
-- Payment processing
-- User authentication
-- A customer-facing website or mobile application
+IF a customer attempts to schedule a delivery more than seven days in advance, THEN THE SYSTEM SHALL reject the attempt.
+
+AC9 — Restaurant Hours
+
+IF the delivery time chosen by the customer falls outside of the open hours of the restaurant, THEN THE SYSTEM SHALL reject the order.
+
+AC10 — Scheduled Status
+
+WHEN a customer creates a valid scheduled order, THE SYSTEM SHALL record it as having a status of "SCHEDULED".
+
+AC11 — Auto-released Order Status Change
+
+WHEN a scheduled order reaches the thirty-minute countdown period before being delivered, THE SYSTEM SHALL convert its status to "PLACED" only once.
+
+AC12 — Cancelled Order Status
+
+WHEN a customer cancels an upcoming scheduled order before the thirty-minute automatic-release deadline, THE SYSTEM SHALL update its status to "CANCELLED". IF the customer attempts to cancel at or after the cutoff point, THEN THE SYSTEM SHALL reject the cancellation request.
+
+4. Functional Specifications
+
+MiniDash MUST be able to:
+
+- Show users restaurants and their respective menus;
+- Permit customers to add items to their shopping cart;
+- Correctly compute order totals;
+- Store data about each customer's orders in SQLite;
+- Permit customers to search for and keep tabs on their orders;
+- Allow both normal and scheduled orders;
+- Check if scheduled delivery times are valid;
+- Automatically release scheduled orders to "PLACED" status;
+- Permit customers to cancel scheduled orders until they are released.
+
+5. Non-functional Specifications
+
+Maintainability: All components of the application (the web API, database, scheduler, frontend and tests) are contained within different files.
+
+Reliability: An order should never be released twice.
+
+Testability: This application utilizes pytest and FakeClock to verify how well schedules are followed.
+
+Persistence: Information related to customer orders is stored in SQLite.
+
+Usability: The front end needs to be easy enough for customers to simply browse through; put in an order; and check on their deliveries.
+
+6. Project Scope
+
+In Scope
+
+- Five restaurants and their menus
+- Normal orders
+- Order tracking
+- Pre-scheduled delivery
+- Validating restaurant hours
+- Automatically releasing scheduled orders
+- Canceling scheduled orders
+- Automated testing
+- Minimal frontend
+
+Out of Scope
+
+- Real payment processing
+- Customer accounts
+- Driver GPS tracking
+- Employee accounts for restaurants
+- Real delivery drivers
+- Using external companies for delivering

@@ -1,9 +1,12 @@
 import sqlite3
 from pathlib import Path
 
+# Defines where the SQLite database file is stored.
 DATABASE_PATH = Path(__file__).resolve().parent.parent / "minidash.db"
 
 
+# Opens the database, makes rows accessible by column name,
+# and enables foreign key relationships between tables.
 def get_connection():
     connection = sqlite3.connect(DATABASE_PATH)
     connection.row_factory = sqlite3.Row
@@ -11,8 +14,17 @@ def get_connection():
     return connection
 
 
+# Initializes MiniDash's database.
+# Creates four related tables, supports existing databases,
+# and inserts five sample restaurants and ten menu items.
 def initialize_database():
     with get_connection() as connection:
+
+        # Creates tables only if they do not already exist.
+        # restaurants: restaurant information and operating hours.
+        # menu_items: food names, prices, and restaurant relationships.
+        # orders: customer addresses, totals, statuses, and delivery times.
+        # order_items: items and quantities belonging to each order.
         connection.executescript("""
             CREATE TABLE IF NOT EXISTS restaurants (
                 id INTEGER PRIMARY KEY,
@@ -56,6 +68,8 @@ def initialize_database():
             );
         """)
 
+        # Checks whether an older database is missing the
+        # scheduled_for column and adds it if necessary.
         columns = connection.execute("PRAGMA table_info(orders)").fetchall()
         column_names = [column["name"] for column in columns]
 
@@ -64,6 +78,8 @@ def initialize_database():
                 "ALTER TABLE orders ADD COLUMN scheduled_for TEXT"
             )
 
+        # Defines the five sample restaurants with their cuisines,
+        # operating hours, and average preparation times.
         restaurants = [
             (1, "Pizza Palace", "Italian", "10:00", "22:00", 25),
             (2, "Sushi House", "Japanese", "11:00", "21:00", 30),
@@ -72,6 +88,7 @@ def initialize_database():
             (5, "Curry Kitchen", "Indian", "11:00", "22:00", 35),
         ]
 
+        # Adds the restaurants without duplicating existing records.
         connection.executemany(
             """
             INSERT OR IGNORE INTO restaurants
@@ -81,6 +98,8 @@ def initialize_database():
             restaurants,
         )
 
+        # Defines ten sample menu items.
+        # Prices are stored in cents to avoid floating-point issues.
         menu_items = [
             (1, 1, "Cheese Pizza", 1200),
             (2, 1, "Pepperoni Pizza", 1500),
@@ -94,6 +113,7 @@ def initialize_database():
             (10, 5, "Garlic Naan", 400),
         ]
 
+        # Inserts the menu items without duplicating existing records.
         connection.executemany(
             """
             INSERT OR IGNORE INTO menu_items

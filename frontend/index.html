@@ -1,0 +1,186 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <!-- PAGE SETUP
+       Sets the title, mobile viewport, and links CSS and JavaScript. -->
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MiniDash | Order delicious food</title>
+  <link rel="stylesheet" href="/app/style.css">
+  <script defer src="/app/app.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <main class="workspace">
+
+      <!-- NAVIGATION
+           Displays the MiniDash logo, restaurant search,
+           order tracking button, and mobile shopping cart. -->
+      <header class="topbar">
+        <a class="logo" href="/app/">☰ <b>MiniDash</b></a>
+        <label class="search">
+          ⌕
+          <input id="searchInput" placeholder="Search restaurants or food"
+                 aria-label="Search restaurants or food">
+        </label>
+        <button id="trackNav" class="round-btn" title="Track an order">📦</button>
+        <button id="mobileCart" class="round-btn" title="Open cart">
+          🛍️ <span id="mobileCount">0</span>
+        </button>
+      </header>
+
+      <!-- BREADCRUMB
+           Shows the currently selected restaurant. -->
+      <div class="breadcrumb">
+        Explore <span>›</span> <strong id="crumb">Restaurants</strong>
+      </div>
+
+      <!-- RESTAURANT BANNER
+           Shows restaurant details and summary statistics.
+           JavaScript changes the title, cuisine, and emoji. -->
+      <section class="banner">
+        <div>
+          <span class="banner-label">FRESH FOOD · FAST DELIVERY</span>
+          <h1 id="bannerTitle">Find your next favorite meal</h1>
+          <p id="bannerSubtitle">Browse five local restaurants and order in minutes.</p>
+        </div>
+        <div class="banner-emoji" id="bannerEmoji">🍜</div>
+        <div class="banner-stats">
+          <span><b id="restaurantCount">5</b> restaurants</span>
+          <span><b>10</b> menu choices</span>
+          <span><b>7 days</b> scheduling</span>
+        </div>
+      </section>
+
+      <!-- RESTAURANT BROWSING
+           JavaScript inserts the five restaurant cards
+           into restaurantGrid. -->
+      <div class="section-title">
+        <div>
+          <h2>Explore restaurants</h2>
+          <p>Choose a kitchen to see its menu</p>
+        </div>
+        <button class="text-btn" id="showAll">View all ↗</button>
+      </div>
+
+      <div class="restaurant-strip" id="restaurantGrid"></div>
+
+      <!-- MENU SECTION
+           Displays the selected restaurant's operating hours
+           and food cards, which are created by JavaScript. -->
+      <div class="section-title menu-title">
+        <div>
+          <h2 id="menuHeading">Popular dishes</h2>
+          <p id="menuDescription">Choose a restaurant to get started</p>
+        </div>
+        <span id="restaurantHours" class="hours-pill"></span>
+      </div>
+
+      <div id="menuGrid" class="dish-grid">
+        <div class="placeholder">
+          Select a restaurant above to view its food 🍽️
+        </div>
+      </div>
+
+      <!-- ORDER TRACKING
+           Customers enter an order number.
+           JavaScript retrieves the order from FastAPI
+           and displays its current status. -->
+      <section class="tracking" id="tracking">
+        <div class="section-title">
+          <div>
+            <h2>Track your order</h2>
+            <p>Enter your order number for the latest status</p>
+          </div>
+        </div>
+        <form id="trackForm" class="track-form">
+          <input type="number" min="1" id="trackId"
+                 placeholder="Order number" required>
+          <button type="submit" class="primary">Track order →</button>
+        </form>
+        <div id="trackingResult" aria-live="polite"></div>
+      </section>
+
+      <footer>MiniDash · CSCI 665 Software Engineering</footer>
+    </main>
+
+    <!-- SHOPPING CART SIDEBAR
+         Shows selected food items, quantities, and subtotal.
+         JavaScript updates these values when items are added
+         or removed. -->
+    <aside class="cart" id="cart">
+      <div class="cart-header">
+        <div>
+          <span class="cart-eyebrow">YOUR ORDER</span>
+          <h2>My cart <span id="cartCount" class="count">0</span></h2>
+        </div>
+        <button id="closeCart" class="close-btn" title="Close cart">✕</button>
+      </div>
+
+      <p id="cartRestaurant" class="cart-restaurant">
+        Choose a restaurant to begin
+      </p>
+
+      <div id="cartItems" class="cart-items">
+        <div class="empty">🛍️<p>Your cart is empty.</p></div>
+      </div>
+
+      <!-- CHECKOUT
+           Displays the subtotal and collects the delivery address.
+           The backend recalculates the final total. -->
+      <div class="cart-bottom">
+        <div class="total">
+          <span>Subtotal</span>
+          <strong id="subtotal">$0.00</strong>
+        </div>
+        <p class="fineprint">Your total is verified by MiniDash at checkout.</p>
+
+        <form id="checkoutForm">
+          <label for="address">Delivery address</label>
+          <input id="address" type="text" minlength="5" required
+                 placeholder="Street, apartment, city">
+
+          <!-- DELIVERY OPTIONS
+               Customers choose immediate or scheduled delivery.
+               JavaScript shows the scheduling input when needed. -->
+          <fieldset>
+            <legend>Delivery time</legend>
+            <label>
+              <input type="radio" name="timing" value="now" checked>
+              As soon as possible
+            </label>
+            <label>
+              <input type="radio" name="timing" value="later">
+              Schedule for later
+            </label>
+          </fieldset>
+
+          <!-- SCHEDULED DELIVERY
+               Accepts a future delivery date and time.
+               The backend enforces the scheduling restrictions. -->
+          <div id="scheduleWrap" class="hidden">
+            <label for="scheduledFor">Delivery date &amp; time</label>
+            <input id="scheduledFor" type="datetime-local">
+            <small>
+              45 minutes to 7 days ahead, within restaurant hours
+              (New York time).
+            </small>
+          </div>
+
+          <button id="checkoutButton" class="primary checkout"
+                  type="submit" disabled>
+            Checkout →
+          </button>
+        </form>
+      </div>
+    </aside>
+  </div>
+
+  <!-- NOTIFICATIONS
+       JavaScript displays temporary messages here, such as
+       order confirmation or validation errors. -->
+  <div id="toast" class="toast hidden"
+       role="status" aria-live="polite"></div>
+</body>
+</html>

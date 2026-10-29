@@ -1,72 +1,79 @@
+MiniDash — Development Tasks
 
-# MiniDash — Track A: Implementation Tasks
+Task 1 — Project Setup
 
-## Overview
+Goal: Establish the overall project structure and database of MiniDash.
 
-The Scheduled Orders feature will be developed in small, testable steps. Each task builds on the previous one.
+Work: Create separate files for the FastAPI application, the SQLite database, the scheduler, the clock, the frontend, and the tests. Establish the schema of the database tables; insert five example restaurants into the database.
 
-## Task 1: Prepare the Database
+Verification: Launch the FastAPI application and verify that there are five restaurants in the database.
 
-- Add an optional scheduled_for column to the orders table.
-- Preserve existing orders and their information.
-- Test that immediate orders can still be saved and retrieved.
 
-## Task 2: Add Scheduled Delivery Input
+Task 2 — Restaurant & Menu Endpoints
+Requirements: AC1, AC2, AC3
 
-- Update POST /orders to accept an optional scheduled_for field.
-- Store scheduled delivery times in UTC.
-- Test requests with and without scheduled_for.
+Goal: Permit customers to search through restaurants and examine menus.
 
-## Task 3: Validate Scheduled Delivery Times
+Work: Develop API endpoints to pull in restaurants and their respective menu items (with prices).
 
-- Reject delivery times less than 45 minutes from now.
-- Reject delivery times more than 7 days from now.
-- Accept exactly 45 minutes and exactly 7 days.
-- Test all four boundary conditions using a fake clock.
+Verification: Verify that all five restaurants are displayed, that menus display the appropriate items, and that an attempt to pull a non-existent restaurant ID returns HTTP 404.
 
-## Task 4: Check Restaurant Operating Hours
 
-- Compare the requested delivery time with the restaurant's opening and closing hours.
-- Reject scheduled orders when the restaurant is closed.
-- Test both open and closed restaurant scenarios.
+Task 3 — Regular Orders
+Requirements: AC4, AC5, AC6
 
-## Task 5: Add Scheduled Order Status
+Goal: Enable customers to create and monitor regular orders.
 
-- Create valid scheduled orders with status SCHEDULED.
-- Keep immediate orders with status PLACED.
-- Return scheduled_for when retrieving an order.
-- Test that both types of orders have the correct status.
+Work: Develop endpoints for creating orders (and determining the total cost based on the prices stored in the database), and endpoints for displaying orders and for modifying order status.
 
-## Task 6: Implement Automatic Order Release
+Verification: Check that orders have been successfully created, that total costs were calculated correctly, that orders can be retrieved, and that invalid order information returns an error.
 
-- Find scheduled orders that are within 30 minutes of delivery.
-- Change eligible orders from SCHEDULED to PLACED.
-- Use a conditional database update to prevent duplicate releases.
-- Test before, at, and after the release threshold.
 
-## Task 7: Implement Cancellation Rules
+Task 4 — Scheduled Orders
+Requirements: AC7, AC8, AC9, AC10
 
-- Allow scheduled orders to be cancelled before release.
-- Reject cancellation through the scheduled-order cancellation operation after release.
-- Test both successful and rejected cancellations.
+Goal: Enable customers to set up deliveries at some point in the future.
 
-## Task 8: Add Automated Tests and Run Quality Checks
+Work: Insert the scheduled_for column into orders. Validate that the minimum is 45 minutes, maximum is seven days, and the selected delivery time falls within restaurant opening hours. Store valid scheduled orders as SCHEDULED.
 
-- Add pytest tests for the five baseline API endpoints.
-- Add tests for scheduled orders and edge cases.
-- Run all tests and fix failures.
-- Run a Python linter and address reported issues.
+Verification: Test both valid and invalid delivery times, restaurant hours, and that orders begin with status SCHEDULED.
 
-## Task 9: Complete Project Documentation
 
-- Update README.md with setup and run instructions.
-- Create or update AGENTS.md with development guidance.
-- Record genuine AI interactions and decisions in AI_LOG.md.
-- Check Git history for at least six meaningful commits.
+Task 5 — Automatic Order Release
+Requirements: AC11
 
-## Task 10: Prepare Final Submission
+Goal: Automatically release scheduled orders thirty minutes prior to delivery time.
 
-- Write the individual reflection.
-- Export the reflection as a 1–2 page PDF.
-- Prepare a short demonstration of the API.
-- Verify that all required files are included.
+Work: Develop the scheduler in src/scheduler.py, which updates eligible orders (those in SCHEDULED status) from SCHEDULED to PLACED.
+
+Verification: Use FakeClock to verify that orders are not released before the 30-minute cutoff, are released when eligible, and cannot be released twice.
+
+
+Task 6 — Scheduled Order Cancellation
+Requirements: AC12
+
+Goal: Permit customers to cancel scheduled orders before they are automatically released.
+
+Work: Implement cancellation logic for changing the status of an order to CANCELLED if it has not yet reached its automatic release (30 minutes prior to delivery) and reject cancellation attempts at or after the cutoff.
+
+Verification: Test cancellation before, at, and after the cutoff period. Verify that cancelled orders do not get released.
+
+
+Task 7 — Automated Testing
+Requirements: AC1–AC12
+
+Goal: Test the API and scheduling functions of MiniDash.
+
+Work: Utilize pytest, FastAPI TestClient, and a separate SQLite test database. For testing of scheduling related functions utilize FakeClock.
+
+Verification: Run the API and scheduling tests and check whether they pass.
+
+
+Task 8 — Frontend Development
+Requirements: AC1, AC2, AC4, AC6, AC10, AC12
+
+Goal: Build a minimalistic customer interface to access the MiniDash application.
+
+Work: Create restaurant listing/browsing page, menus for each restaurant, shopping cart feature, order placement function, scheduled deliveries feature, order tracking feature and cancellation of scheduled deliveries via HTML/CSS/JavaScript.
+
+Verification: Manually test the web application to ensure customers can browse restaurants listings, review menus for each restaurant listing, add products to shopping cart, create and schedule deliveries, track their placed orders and cancel scheduled deliveries.
